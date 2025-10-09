@@ -75,6 +75,16 @@
               placeholder="请输入API Key"
               :disabled="isSaving"
             />
+            <div class="api-key-actions">
+              <button
+                class="btn btn-secondary"
+                @click="clearApiKey"
+                type="button"
+                :disabled="isSaving"
+              >
+                清除本地Key
+              </button>
+            </div>
           </div>
 
           <!-- 通用模型配置 - 仅自定义供应商显示 -->
@@ -560,6 +570,22 @@ const restoreDefaultSystemPrompt = () => {
   console.log('📝 System prompt restored to default')
 }
 
+// 清除API Key
+const clearApiKey = () => {
+  // 清除当前供应商的API Key
+  const provider = props.providers[providerId.value]
+  if (provider && !provider.isCustom) {
+    localStorage.removeItem(`apiKey_${providerId.value}`)
+  } else if (provider && provider.isCustom) {
+    localStorage.removeItem('apiKey_custom')
+  }
+
+  // 清除输入框中的值
+  apiKeyInput.value = ''
+
+  console.log('🗑️ API Key cleared from local storage')
+}
+
 // 处理连接
 const handleSave = () => {
   if (!canSave.value) return
@@ -879,5 +905,17 @@ const handleSave = () => {
   font-weight: 500;
   min-width: 40px;
   text-align: center;
+}
+
+.api-key-actions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.api-key-actions .btn {
+  width: auto;
+  padding: 8px 16px;
+  font-size: 13px;
 }
 </style>

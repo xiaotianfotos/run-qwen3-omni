@@ -53,12 +53,7 @@
    npm run build
    ```
 
-2. **启动生产服务器**
-   ```bash
-   npx tsx src/server/index.ts
-   ```
-
-3. **访问应用**
+2. **访问应用**
    ```
    http://localhost:5173
    ```
