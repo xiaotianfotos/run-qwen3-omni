@@ -10,7 +10,7 @@ export interface OpenAIConfig {
 export interface ChatCompletionMessage {
   role: 'user' | 'assistant' | 'system';
   content: Array<{
-    type: 'text' | 'image_url' | 'input_audio';
+    type: 'text' | 'image_url' | 'input_audio' | 'video_url';
     text?: string;
     image_url?: {
       url: string;
@@ -18,6 +18,9 @@ export interface ChatCompletionMessage {
     input_audio?: {
       data: string; // base64 encoded audio payload (e.g. WAV data)
       format: string; // audio encoding, typically 'wav' or 'mp3'
+    };
+    video_url?: {
+      url: string; // base64 encoded video data URL (e.g. data:video/mp4;base64,...)
     };
   }>;
 }

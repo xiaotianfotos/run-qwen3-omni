@@ -77,6 +77,7 @@ export class Agent extends EventEmitter {
   async sendMultiModalMessage(options: {
     text?: string
     images?: string[]
+    videos?: string[]
     audio?: string
   }): Promise<void> {
     const contentParts = this.buildContentParts(options)
@@ -306,7 +307,7 @@ export class Agent extends EventEmitter {
     }
   }
 
-  private buildContentParts(options: { text?: string; images?: string[]; audio?: string }): MessageContent {
+  private buildContentParts(options: { text?: string; images?: string[]; videos?: string[]; audio?: string }): MessageContent {
     const parts: MessageContent = []
 
     if (options.text && options.text.trim()) {
@@ -317,6 +318,7 @@ export class Agent extends EventEmitter {
     }
 
     if (options.images && options.images.length > 0) {
+      console.log(`🖼️ Agent: 处理 ${options.images.length} 个图片`)
       options.images.forEach(rawImage => {
         if (!rawImage) return
         const imageSource = rawImage.trim()
@@ -331,6 +333,31 @@ export class Agent extends EventEmitter {
         parts.push({
           type: 'image_url',
           image_url: { url }
+        })
+      })
+    }
+
+    // 处理视频文件
+    if (options.videos && options.videos.length > 0) {
+      console.log(`🎬 Agent: 处理 ${options.videos.length} 个视频，使用 video_url 类型`)
+      options.videos.forEach((rawVideo, index) => {
+        if (!rawVideo) return
+        const videoSource = rawVideo.trim()
+        if (!videoSource) return
+
+        // 确保视频数据是完整的 data URL 格式
+        const isPrefixedDataUrl = videoSource.startsWith('data:')
+        const url = isPrefixedDataUrl ? videoSource : `data:video/mp4;base64,${videoSource}`
+
+        // 提取 MIME 类型用于日志
+        const mimeMatch = url.match(/^data:([^;]+)/)
+        const mimeType = mimeMatch ? mimeMatch[1] : 'unknown'
+
+        console.log(`  • 视频 ${index + 1}: 类型=${mimeType}, 大小=${(url.length / 1024).toFixed(2)}KB`)
+
+        parts.push({
+          type: 'video_url',
+          video_url: { url }
         })
       })
     }

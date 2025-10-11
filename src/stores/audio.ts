@@ -44,7 +44,7 @@ export const useAudioStore = defineStore('audio', () => {
   // VAD状态
   const isVoiceActive = ref(false)
   const vadThreshold = ref(18)
-  const vadSilenceDuration = ref(800)
+  const vadSilenceDuration = ref(1500) // 默认1500毫秒
 
   // 错误状态
   const audioError = ref<string | null>(null)
@@ -214,7 +214,7 @@ export const useAudioStore = defineStore('audio', () => {
   }
 
   const updateVadSilenceDuration = (duration: number) => {
-    vadSilenceDuration.value = Math.max(100, Math.min(5000, duration))
+    vadSilenceDuration.value = Math.max(500, Math.min(4000, duration))
   }
 
   const reset = () => {
@@ -237,7 +237,7 @@ export const useAudioStore = defineStore('audio', () => {
     // 重置VAD状态
     isVoiceActive.value = false
     vadThreshold.value = 18
-    vadSilenceDuration.value = 800
+    vadSilenceDuration.value = 1500
 
     // 重置其他状态
     volumeLevel.value = 0

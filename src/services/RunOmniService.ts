@@ -92,7 +92,7 @@ export class RunOmniService extends EventEmitter {
       this.status.isInitialized = true
       this.emit('initialized')
       this.emit('stateChanged', this.currentState)
-      
+
       console.log('✅ RunOmniService 初始化成功')
     } catch (error) {
       this.currentState = RunOmniState.ERROR
@@ -100,6 +100,12 @@ export class RunOmniService extends EventEmitter {
       console.error('❌ RunOmniService 初始化失败:', error)
       throw error
     }
+  }
+
+  // 更新VAD配置
+  updateVadConfig(config: { threshold: number; silenceDuration: number }): void {
+    this.audioManager.updateVadConfig(config)
+    console.log('🔊 VAD配置已更新:', config)
   }
 
   // 开始监听（录音 + 截图）

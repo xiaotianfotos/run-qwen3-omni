@@ -189,6 +189,7 @@ const uploadedFiles = ref<Array<{
   previewUrl: string
 }>>([])
 const fileInput = ref<HTMLInputElement | null>(null)
+const isProcessingFiles = ref(false) // 文件处理状态指示器
 
 // 全尺寸图片预览
 const showFullSizeImage = ref(false)
@@ -1213,6 +1214,20 @@ watch(
   }
 )
 
+// 监听VAD配置变化并应用到服务
+watch([
+  () => audioStore.vadThreshold,
+  () => audioStore.vadSilenceDuration
+], ([threshold, silenceDuration]) => {
+  if (runOmniService.value) {
+    runOmniService.value.updateVadConfig({
+      threshold,
+      silenceDuration
+    })
+    console.log('🔊 VAD配置已更新到RunOmniService:', { threshold, silenceDuration })
+  }
+})
+
 
 // 错误处理方法
 const showError = (title: string, message: string) => {
@@ -1441,6 +1456,7 @@ const handleTextInput = async () => {
     const fileTypes = uploadedFiles.value.map(file => {
       if (file.type.startsWith('image/')) return '图片'
       if (file.type.startsWith('video/')) return '视频'
+      if (file.type.startsWith('audio/')) return '音频'
       return '文件'
     })
 
@@ -1482,20 +1498,83 @@ const handleTextInput = async () => {
       // 如果有文件，需要转换为base64格式发送
       if (filesToSend.length > 0) {
         const imageBase64List: string[] = []
+        const videoBase64List: string[] = []
+        const audioBase64List: string[] = []
 
-        // 处理文件转换
-        for (const file of filesToSend) {
-          if (file.type.startsWith('image/')) {
-            const base64 = await fileToBase64(file)
-            imageBase64List.push(base64)
+        console.log('📦 开始处理文件:', filesToSend.length, '个')
+        isProcessingFiles.value = true // 显示处理中状态
+
+        try {
+          // 处理文件转换
+          for (const file of filesToSend) {
+            try {
+              if (file.type.startsWith('image/')) {
+                console.log('🖼️ 处理图片文件:', file.name, `(${file.type})`)
+                const dataUrl = await fileToBase64(file)
+                imageBase64List.push(dataUrl)
+                const mimeType = dataUrl.split(';')[0].split(':')[1] // 提取MIME类型
+                console.log('✅ 图片转换成功:', { 
+                  name: file.name, 
+                  mimeType,
+                  dataUrlSize: `${(dataUrl.length / 1024).toFixed(2)}KB` 
+                })
+              } else if (file.type.startsWith('video/')) {
+                console.log('🎬 处理视频文件:', file.name, `(${file.type})`)
+                const dataUrl = await fileToBase64(file)
+                videoBase64List.push(dataUrl)
+                const mimeType = dataUrl.split(';')[0].split(':')[1] // 提取MIME类型
+                console.log('✅ 视频转换成功:', { 
+                  name: file.name,
+                  mimeType,
+                  dataUrlSize: `${(dataUrl.length / 1024).toFixed(2)}KB`,
+                  originalSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`
+                })
+              } else if (file.type.startsWith('audio/')) {
+                console.log('🔊 处理音频文件:', file.name, `(${file.type})`)
+                const dataUrl = await fileToBase64(file)
+                audioBase64List.push(dataUrl)
+                const mimeType = dataUrl.split(';')[0].split(':')[1] // 提取MIME类型
+                console.log('✅ 音频转换成功:', { 
+                  name: file.name,
+                  mimeType,
+                  dataUrlSize: `${(dataUrl.length / 1024).toFixed(2)}KB`,
+                  originalSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`
+                })
+              }
+            } catch (error) {
+              console.error('❌ 文件处理失败:', file.name, error)
+              showError('文件处理失败', `无法处理文件 ${file.name}`)
+            }
           }
-        }
 
-        // 发送带图片的文本消息
-        await multiModalService.value.createResponse(text)
+          console.log('📤 准备发送多模态消息:', { 
+            text, 
+            images: imageBase64List.length,
+            videos: videoBase64List.length,
+            audios: audioBase64List.length
+          })
+          
+          // 发送所有类型的文件（图片、视频、音频）
+          if (imageBase64List.length > 0 || videoBase64List.length > 0 || audioBase64List.length > 0) {
+            await (multiModalService.value as any).sendMultiModalMessage({
+              text: text,
+              images: imageBase64List,
+              videos: videoBase64List,
+              audios: audioBase64List
+            })
+            console.log('✅ 多模态消息发送成功')
+          } else {
+            // 如果没有可发送的内容，只发送文本
+            await multiModalService.value.createResponse(text)
+            console.log('✅ 纯文本消息发送成功')
+          }
+        } finally {
+          isProcessingFiles.value = false // 隐藏处理中状态
+        }
       } else {
         // 发送纯文本消息
         await multiModalService.value.createResponse(text)
+        console.log('✅ 纯文本消息发送成功')
       }
 
     } else {
@@ -1526,9 +1605,21 @@ const handleFileUpload = (event: Event) => {
 
   Array.from(files).forEach(file => {
     // 检查文件类型
-    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
-      showError('文件类型错误', '只支持图片和视频文件')
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/') && !file.type.startsWith('audio/')) {
+      showError('文件类型错误', `文件 ${file.name} 不支持，只支持图片、视频和音频文件`)
       return
+    }
+
+    // 检查文件大小
+    if (!validateFileSize(file)) {
+      return
+    }
+
+    // 如果是视频或音频文件，给出提示
+    if (file.type.startsWith('video/')) {
+      console.log('🎬 检测到视频文件，将直接上传:', file.name, `${(file.size / 1024 / 1024).toFixed(2)}MB`)
+    } else if (file.type.startsWith('audio/')) {
+      console.log('🔊 检测到音频文件，将直接上传:', file.name, `${(file.size / 1024 / 1024).toFixed(2)}MB`)
     }
 
     // 创建预览URL
@@ -1561,19 +1652,29 @@ const clearUploadedFiles = () => {
   uploadedFiles.value = []
 }
 
-// 文件转base64工具函数
+// 文件转完整data URL（包含MIME类型）
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {
       const result = reader.result as string
-      // 移除data:image/jpeg;base64,前缀
-      const base64 = result.split(',')[1]
-      resolve(base64)
+      // 返回完整的 data URL，包含 MIME 类型
+      // 例如: data:image/jpeg;base64,xxx 或 data:video/mp4;base64,xxx
+      resolve(result)
     }
     reader.onerror = reject
     reader.readAsDataURL(file)
   })
+}
+
+// 检查文件大小（限制为20MB）
+const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB（视频文件通常较大）
+const validateFileSize = (file: File): boolean => {
+  if (file.size > MAX_FILE_SIZE) {
+    showError('文件过大', `文件 ${file.name} 超过20MB限制（当前: ${(file.size / 1024 / 1024).toFixed(2)}MB）`)
+    return false
+  }
+  return true
 }
 
 // 清除聊天历史
@@ -1827,14 +1928,69 @@ onUnmounted(() => {
       <!-- 底部输入控制栏 -->
       <div class="bottom-controls" :class="{ 'with-canvas': isCanvasOverlayVisible }">
         <div class="input-container">
+          <!-- 文件预览区域 (移到输入框上方) -->
+          <div v-if="uploadedFiles.length > 0" class="file-preview-area">
+            <div class="file-preview-header">
+              <span>已选择 {{ uploadedFiles.length }} 个文件</span>
+              <button class="clear-files-btn" @click="clearUploadedFiles" title="清除所有文件">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                </svg>
+              </button>
+            </div>
+            <div class="file-preview-grid">
+              <div
+                v-for="(file, index) in uploadedFiles"
+                :key="index"
+                class="file-preview-item"
+                :class="{ 'image': file.type.startsWith('image/'), 'video': file.type.startsWith('video/') }"
+              >
+                <div class="file-preview-content">
+                  <img
+                    v-if="file.type.startsWith('image/')"
+                    :src="file.previewUrl"
+                    :alt="file.name"
+                    class="preview-thumbnail"
+                  />
+                  <video
+                    v-else-if="file.type.startsWith('video/')"
+                    :src="file.previewUrl"
+                    class="preview-thumbnail"
+                  ></video>
+                  <div v-else class="file-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                    </svg>
+                  </div>
+                </div>
+                <button
+                  class="remove-file-btn"
+                  @click="removeFile(index)"
+                  title="移除文件"
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- 文本输入区域 -->
           <div class="text-input-wrapper">
+            <!-- 文件处理中指示器 -->
+            <div v-if="isProcessingFiles" class="processing-files-indicator">
+              <div class="spinner"></div>
+              <span>文件处理中...</span>
+            </div>
+            
             <textarea
               v-model="textInput"
               class="text-input"
               placeholder="输入文字..."
               rows="1"
               @keydown.enter.prevent="handleTextInput"
+              :disabled="isProcessingFiles"
             ></textarea>
 
             <!-- 文件上传按钮 -->
@@ -1843,14 +1999,14 @@ onUnmounted(() => {
                 type="file"
                 ref="fileInput"
                 class="file-input"
-                accept="image/*,video/*"
+                accept="image/*,video/*,audio/*"
                 @change="handleFileUpload"
                 multiple
               />
               <button
                 class="file-upload-btn"
                 @click="triggerFileInput"
-                title="上传图片或视频"
+                title="上传图片、视频或音频"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
@@ -1965,56 +2121,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 文件预览区域 -->
-        <div v-if="uploadedFiles.length > 0" class="file-preview-area">
-          <div class="file-preview-header">
-            <span>已选择文件 ({{ uploadedFiles.length }})</span>
-            <button class="clear-files-btn" @click="clearUploadedFiles" title="清除所有文件">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-              </svg>
-            </button>
-          </div>
-          <div class="file-preview-grid">
-            <div
-              v-for="(file, index) in uploadedFiles"
-              :key="index"
-              class="file-preview-item"
-              :class="{ 'image': file.type.startsWith('image/'), 'video': file.type.startsWith('video/') }"
-            >
-              <div class="file-preview-content">
-                <img
-                  v-if="file.type.startsWith('image/')"
-                  :src="file.previewUrl"
-                  :alt="file.name"
-                  class="preview-thumbnail"
-                />
-                <video
-                  v-else-if="file.type.startsWith('video/')"
-                  :src="file.previewUrl"
-                  class="preview-thumbnail"
-                ></video>
-                <div v-else class="file-icon">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
-                  </svg>
-                </div>
-              </div>
-              <div class="file-info">
-                <span class="file-name">{{ file.name }}</span>
-                <button
-                  class="remove-file-btn"
-                  @click="removeFile(index)"
-                  title="移除文件"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+
       </div>
     </div>
 
@@ -3447,6 +3554,52 @@ onUnmounted(() => {
   border-radius: 20px;
   padding: 12px 16px;
   backdrop-filter: blur(10px);
+  position: relative;
+}
+
+/* 文件处理中指示器 */
+.processing-files-indicator {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(103, 126, 234, 0.2);
+  border: 1px solid rgba(103, 126, 234, 0.4);
+  border-radius: 12px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(103, 126, 234, 0.3);
+  animation: fadeInUp 0.3s ease;
+}
+
+.processing-files-indicator .spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .text-input {
@@ -3498,15 +3651,14 @@ onUnmounted(() => {
   transform: scale(1.05);
 }
 
-/* 文件预览区域样式 */
+/* 文件预览区域样式 (在输入框上方) */
 .file-preview-area {
   width: 100%;
-  max-width: 600px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  margin-top: 12px;
-  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  padding: 8px;
   backdrop-filter: blur(10px);
 }
 
@@ -3514,8 +3666,8 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
-  font-size: 12px;
+  margin-bottom: 6px;
+  font-size: 11px;
   color: rgba(255, 255, 255, 0.7);
 }
 
@@ -3524,9 +3676,12 @@ onUnmounted(() => {
   border: none;
   cursor: pointer;
   color: rgba(255, 255, 255, 0.6);
-  padding: 4px;
-  border-radius: 4px;
+  padding: 3px;
+  border-radius: 3px;
   transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .clear-files-btn:hover {
@@ -3535,21 +3690,31 @@ onUnmounted(() => {
 }
 
 .file-preview-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .file-preview-item {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  overflow: hidden;
   position: relative;
+  width: 40px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.file-preview-item:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: scale(1.05);
 }
 
 .file-preview-content {
-  aspect-ratio: 1;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3564,40 +3729,37 @@ onUnmounted(() => {
 
 .file-icon {
   color: rgba(255, 255, 255, 0.6);
-}
-
-.file-info {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 4px 6px;
-  background: rgba(0, 0, 0, 0.5);
-}
-
-.file-name {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.8);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-  margin-right: 4px;
+  justify-content: center;
 }
 
 .remove-file-btn {
-  background: none;
-  border: none;
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: rgba(220, 53, 69, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   cursor: pointer;
-  color: rgba(255, 255, 255, 0.6);
-  padding: 2px;
-  border-radius: 2px;
-  transition: all 0.3s;
-  flex-shrink: 0;
+  color: white;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  padding: 0;
+}
+
+.file-preview-item:hover .remove-file-btn {
+  opacity: 1;
 }
 
 .remove-file-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.9);
+  background: rgba(220, 53, 69, 1);
+  transform: scale(1.1);
 }
 
 /* 调整底部控制栏样式 */

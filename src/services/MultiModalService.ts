@@ -1042,6 +1042,68 @@ export class MultiModalService extends EventEmitter {
     }
   }
 
+  // 发送多模态消息（文本 + 图片 + 视频 + 音频）
+  async sendMultiModalMessage(options: {
+    text: string
+    images?: string[]
+    videos?: string[]
+    audios?: string[]
+  }): Promise<void> {
+    const { text, images, videos, audios } = options
+    
+    console.log('📤 MultiModalService.sendMultiModalMessage 调用:', {
+      text: text.substring(0, 50),
+      images: images?.length || 0,
+      videos: videos?.length || 0,
+      audios: audios?.length || 0
+    })
+
+    try {
+      // 视频和图片分开传递给 Agent
+      await this.agent.sendMultiModalMessage({
+        text: text.trim(),
+        images: images && images.length > 0 ? images : undefined,
+        videos: videos && videos.length > 0 ? videos : undefined,
+        audio: '' // 当前不支持音频文件，这里用于语音输入
+      })
+
+      if (audios && audios.length > 0) {
+        console.warn('⚠️ 检测到音频文件，但当前 Agent 不支持音频文件上传')
+      }
+    } catch (error) {
+      console.error('发送多模态消息失败:', error)
+      throw error
+    }
+  }
+
+  // 发送多模态消息（文本 + 图片）
+  async sendMultiModalTextMessage(text: string, images?: string[]): Promise<void> {
+    if (!text || !text.trim()) {
+      console.warn('空文本消息，跳过发送')
+      return
+    }
+
+    try {
+      console.log('📤 发送多模态文本消息:', { text, imageCount: images?.length || 0 })
+      
+      if (images && images.length > 0) {
+        // 发送带图片的消息
+        await this.agent.sendMultiModalMessage({
+          text: text.trim(),
+          images: images,
+          videos: undefined,
+          audio: ''
+        })
+      } else {
+        // 发送纯文本消息
+        await this.agent.sendTextMessage(text.trim())
+      }
+    } catch (error) {
+      console.error('发送多模态文本消息失败:', error)
+      throw error
+    }
+  }
+
   // 获取状态
   getStatus(): ServiceStatus {
     return { ...this.status }

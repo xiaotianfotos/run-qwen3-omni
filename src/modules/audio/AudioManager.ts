@@ -87,7 +87,7 @@ export class AudioManager extends EventEmitter {
       // 初始化VAD检测器
       this.vadDetector = new VadDetector({
         threshold: 5,
-        silenceDuration: 800,
+        silenceDuration: 1500, // 默认1500毫秒
         voiceStartCallback: () => {
           this.emit('voiceStarted');
         },

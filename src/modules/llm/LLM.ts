@@ -16,10 +16,11 @@ export interface LLMConfig {
 export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: Array<{
-    type: 'text' | 'image_url' | 'input_audio';
+    type: 'text' | 'image_url' | 'input_audio' | 'video_url';
     text?: string;
     image_url?: { url: string };
     input_audio?: { data: string; format: string };
+    video_url?: { url: string }; // base64 encoded video data URL
   }>;
   tool_calls?: Array<{
     id: string;
@@ -135,6 +136,16 @@ export class LLM {
               input_audio: normalizedAudio
             } as unknown as OpenAI.Chat.ChatCompletionContentPartInputAudio);
           }
+        }
+
+        // 处理视频类型，直接转发 video_url
+        if (item.type === 'video_url' && item.video_url) {
+          console.log('🎬 LLM: 检测到 video_url 类型，直接转发给 OpenAI')
+          contentParts.push({
+            type: 'video_url',
+            video_url: { url: item.video_url.url }
+          } as any);
+          continue;
         }
       }
 

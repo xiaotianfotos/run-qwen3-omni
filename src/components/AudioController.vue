@@ -41,6 +41,12 @@ const initializeAudioManager = async () => {
   audioManager.value = new AudioManager()
   await audioManager.value.initialize()
 
+  // 应用初始VAD配置
+  audioManager.value.updateVadConfig({
+    threshold: audioStore.vadThreshold,
+    silenceDuration: audioStore.vadSilenceDuration
+  })
+
   // 设置音频管理器事件监听
   audioManager.value.on('permissionDenied', (error: any) => {
     console.error('Audio permission denied:', error)
@@ -107,6 +113,20 @@ const initializeAudioManager = async () => {
     audioStore.resumeRecording()
   })
 }
+
+// 监听VAD配置变化并应用到AudioManager
+watch([
+  () => audioStore.vadThreshold,
+  () => audioStore.vadSilenceDuration
+], ([threshold, silenceDuration]) => {
+  if (audioManager.value) {
+    audioManager.value.updateVadConfig({
+      threshold,
+      silenceDuration
+    })
+    console.log('🔊 VAD配置已更新:', { threshold, silenceDuration })
+  }
+})
 
 // 开始录音
 const startRecording = async () => {

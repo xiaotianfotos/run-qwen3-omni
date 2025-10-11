@@ -193,6 +193,24 @@
               <div class="threshold-value">{{ Math.round(vadThreshold) }}%</div>
             </div>
           </div>
+
+          <!-- 静音持续时间设置 -->
+          <div class="form-group">
+            <div class="vad-threshold-control">
+              <label class="control-label">静音持续时间</label>
+              <input
+                type="range"
+                v-model.number="vadSilenceDuration"
+                min="500"
+                max="4000"
+                step="100"
+                @input="updateVadSilenceDuration"
+                class="threshold-slider"
+              />
+              <div class="threshold-value">{{ Math.round(vadSilenceDuration) }}ms</div>
+            </div>
+            <p class="field-hint">检测到语音后，持续静音超过此时间认为语音结束。建议1500-2000ms。</p>
+          </div>
         </div>
 
         <div v-else-if="activeTab === 'systemPrompt'" class="tab-panel">
@@ -293,6 +311,7 @@ const apiKeyInput = ref(props.initialApiKey)
 const baseUrlInput = ref(props.initialBaseUrl)
 const modelInput = ref(props.initialModel)
 const vadThreshold = ref(18) // VAD阈值，范围0-100
+const vadSilenceDuration = ref(1500) // 静音持续时间，范围500-4000毫秒
 const systemPromptInput = ref(props.initialSystemPrompt)
 const providerId = ref(props.initialProviderId)
 const selectedVoice = ref('Cherry') // 默认音色
@@ -353,6 +372,9 @@ const canSave = computed(() => {
 onMounted(() => {
   // 加载VAD阈值
   vadThreshold.value = audioStore.vadThreshold
+
+  // 加载静音持续时间
+  vadSilenceDuration.value = audioStore.vadSilenceDuration
 
   // 加载会话保存回合数
   const savedMaxHistoryRounds = localStorage.getItem('maxHistoryRounds')
@@ -459,6 +481,11 @@ watch(() => audioStore.vadThreshold, (newValue) => {
   vadThreshold.value = newValue
 })
 
+// 监听store中的静音持续时间变化
+watch(() => audioStore.vadSilenceDuration, (newValue) => {
+  vadSilenceDuration.value = newValue
+})
+
 // 监听音色变化
 watch(selectedVoice, (newVoice) => {
   if (newVoice) {
@@ -531,6 +558,13 @@ const updateVadThreshold = () => {
   console.log('🔊 VAD threshold updated:', vadThreshold.value)
   // 更新store中的值
   audioStore.updateVadThreshold(vadThreshold.value)
+}
+
+// 更新静音持续时间
+const updateVadSilenceDuration = () => {
+  console.log('🔊 VAD silence duration updated:', vadSilenceDuration.value)
+  // 更新store中的值
+  audioStore.updateVadSilenceDuration(vadSilenceDuration.value)
 }
 
 // 更新会话保存回合数
