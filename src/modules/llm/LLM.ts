@@ -16,10 +16,11 @@ export interface LLMConfig {
 export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: Array<{
-    type: 'text' | 'image_url' | 'input_audio' | 'video_url';
+    type: 'text' | 'image_url' | 'input_audio' | 'video_url' | 'audio_url';
     text?: string;
     image_url?: { url: string };
     input_audio?: { data: string; format: string };
+    audio_url?: { url: string };
     video_url?: { url: string }; // base64 encoded video data URL
   }>;
   tool_calls?: Array<{
@@ -129,13 +130,33 @@ export class LLM {
         }
 
         if (item.type === 'input_audio' && item.input_audio) {
-          const normalizedAudio = this.normalizeInputAudio(item.input_audio.data, item.input_audio.format);
-          if (normalizedAudio) {
+          // 检查是否为硅基流动供应商，如果是则转换为 audio_url 格式
+          if (this.isSiliconFlowProvider()) {
+            console.log('🎵 LLM: 硅基流动供应商，转换 input_audio 为 audio_url 格式')
+            const audioUrl = `data:audio/mpeg;base64,${item.input_audio.data}`
             contentParts.push({
-              type: 'input_audio',
-              input_audio: normalizedAudio
-            } as unknown as OpenAI.Chat.ChatCompletionContentPartInputAudio);
+              type: 'audio_url',
+              audio_url: { url: audioUrl }
+            } as any);
+          } else {
+            // 其他供应商使用原有的 input_audio 格式
+            const normalizedAudio = this.normalizeInputAudio(item.input_audio.data, item.input_audio.format);
+            if (normalizedAudio) {
+              contentParts.push({
+                type: 'input_audio',
+                input_audio: normalizedAudio
+              } as unknown as OpenAI.Chat.ChatCompletionContentPartInputAudio);
+            }
           }
+        }
+
+        if (item.type === 'audio_url' && item.audio_url) {
+          console.log('🎵 LLM: 检测到 audio_url 类型，直接转发给 OpenAI')
+          contentParts.push({
+            type: 'audio_url',
+            audio_url: { url: item.audio_url.url }
+          } as any);
+          continue;
         }
 
         // 处理视频类型，直接转发 video_url
@@ -476,23 +497,45 @@ export class LLM {
     return null
   }
 
+  // 检查是否为硅基流动供应商
+  private isSiliconFlowProvider(): boolean {
+    const baseURL = this.config.baseURL?.toLowerCase() || '';
+    const providerId = this.config.providerId?.toLowerCase();
+
+    // 硅基流动相关的 URL 模式
+    const siliconFlowPatterns = [
+      'api.siliconflow.cn',
+      'siliconflow.cn',
+      'api.siliconflow.com',
+      'siliconflow.com'
+    ];
+
+    // 通过 providerId 检测
+    if (providerId === 'siliconflow' || providerId === 'silicon-flow') {
+      return true;
+    }
+
+    // 通过 baseURL 检测
+    return siliconFlowPatterns.some(pattern => baseURL.includes(pattern));
+  }
+
   // 检查是否需要为音频数据添加 data: 前缀
   private shouldAddAudioDataPrefix(): boolean {
     // 检查是否为阿里云 DashScope
     const baseURL = this.config.baseURL?.toLowerCase() || '';
     const providerId = this.config.providerId?.toLowerCase();
-    
+
     // 阿里云相关的 URL 模式
     const aliyunPatterns = [
       'dashscope.aliyuncs.com',
       'dashscope-intl.aliyuncs.com'
     ];
-    
+
     // 通过 providerId 检测
     if (providerId === 'aliyun') {
       return true;
     }
-    
+
     // 通过 baseURL 检测
     return aliyunPatterns.some(pattern => baseURL.includes(pattern));
   }
