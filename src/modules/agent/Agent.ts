@@ -79,6 +79,7 @@ export class Agent extends EventEmitter {
     images?: string[]
     videos?: string[]
     audio?: string
+    audios?: string[]
   }): Promise<void> {
     const contentParts = this.buildContentParts(options)
 
@@ -92,8 +93,9 @@ export class Agent extends EventEmitter {
 
     // 保存用户消息到历史记录，包含音频和图片数据
     const textContent = options.text || ''
-    const audioData = options.audio  // 保存音频数据
-    const imageData = options.images?.[0]  // 保存第一张图片（简化处理）
+    // 历史仅保存一个音频和一张图片（与现有策略一致）
+    const audioData = options.audio ?? (options.audios && options.audios.length > 0 ? options.audios[0] : undefined)
+    const imageData = options.images?.[0]
     
     this.conversationHistory.addUserMessage(textContent, audioData, imageData)
 
@@ -307,7 +309,7 @@ export class Agent extends EventEmitter {
     }
   }
 
-  private buildContentParts(options: { text?: string; images?: string[]; videos?: string[]; audio?: string }): MessageContent {
+  private buildContentParts(options: { text?: string; images?: string[]; videos?: string[]; audio?: string; audios?: string[] }): MessageContent {
     const parts: MessageContent = []
 
     if (options.text && options.text.trim()) {
@@ -362,17 +364,62 @@ export class Agent extends EventEmitter {
       })
     }
 
+    // 处理单个音频（兼容旧参数）
     if (options.audio) {
-      parts.push({
-        type: 'input_audio',
-        input_audio: {
-          data: options.audio,
-          format: 'wav'
-        }
+      const normalized = this.normalizeAudioData(options.audio)
+      if (normalized) {
+        parts.push({
+          type: 'input_audio',
+          input_audio: normalized
+        })
+      }
+    }
+
+    // 处理多个音频
+    if (options.audios && options.audios.length > 0) {
+      console.log(`🎵 Agent: 处理 ${options.audios.length} 个音频`)
+      options.audios.forEach((rawAudio, index) => {
+        const normalized = this.normalizeAudioData(rawAudio)
+        if (!normalized) return
+        console.log(`  • 音频 ${index + 1}: format=${normalized.format}, size=${(normalized.data.length/1024).toFixed(2)}KB`)
+        parts.push({
+          type: 'input_audio',
+          input_audio: normalized
+        })
       })
     }
 
     return parts
+  }
+
+  // 将 data URL 或纯 base64 的音频归一化为 {data, format}
+  private normalizeAudioData(source: string | undefined): { data: string; format: 'wav' | 'mp3' } | null {
+    if (!source) return null
+    const s = source.trim()
+    if (!s) return null
+
+    // data URL: data:audio/<subtype>;base64,<payload>
+    const m = s.match(/^data:audio\/([^;]+);base64,(.+)$/i)
+    if (m) {
+      const subtype = m[1].toLowerCase()
+      const payload = m[2]
+      const format: 'wav' | 'mp3' = subtype.includes('wav') ? 'wav' : 'mp3' // mp3 常见为 mpeg
+      return { data: payload, format }
+    }
+
+    // 如果是 data:;base64,<payload>
+    const m2 = s.match(/^data:;base64,(.+)$/i)
+    if (m2) {
+      return { data: m2[1], format: 'wav' }
+    }
+
+    // 纯 base64 字符串，默认当作 wav
+    if (/^[A-Za-z0-9+/=]+$/.test(s)) {
+      return { data: s, format: 'wav' }
+    }
+
+    console.warn('无法识别的音频数据格式，已忽略')
+    return null
   }
 
   private addSystemMessage(content: string): void {

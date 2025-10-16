@@ -129,6 +129,19 @@ export class LLM {
           continue;
         }
 
+        // 处理输入音频，进行规范化（支持 wav/mp3，数据为base64）
+        if (item.type === 'input_audio' && (item as any).input_audio) {
+          const src = (item as any).input_audio as { data: string; format?: string };
+          const normalized = this.normalizeInputAudio(src.data, (src.format || 'wav'));
+          if (normalized) {
+            contentParts.push({
+              type: 'input_audio',
+              input_audio: normalized
+            } as unknown as OpenAI.Chat.ChatCompletionContentPartInputAudio);
+          }
+          continue;
+        }
+
         if (item.type === 'input_audio' && item.input_audio) {
           // 检查是否为硅基流动供应商，如果是则转换为 audio_url 格式
           if (this.isSiliconFlowProvider()) {

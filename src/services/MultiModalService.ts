@@ -1059,17 +1059,13 @@ export class MultiModalService extends EventEmitter {
     })
 
     try {
-      // 视频和图片分开传递给 Agent
+      // 将图片、视频、音频一并传递给 Agent（音频以base64发送）
       await this.agent.sendMultiModalMessage({
         text: text.trim(),
         images: images && images.length > 0 ? images : undefined,
         videos: videos && videos.length > 0 ? videos : undefined,
-        audio: '' // 当前不支持音频文件，这里用于语音输入
+        audios: audios && audios.length > 0 ? audios : undefined
       })
-
-      if (audios && audios.length > 0) {
-        console.warn('⚠️ 检测到音频文件，但当前 Agent 不支持音频文件上传')
-      }
     } catch (error) {
       console.error('发送多模态消息失败:', error)
       throw error

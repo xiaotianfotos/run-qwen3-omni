@@ -1667,11 +1667,11 @@ const fileToBase64 = (file: File): Promise<string> => {
   })
 }
 
-// 检查文件大小（限制为20MB）
-const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB（视频文件通常较大）
+// 检查文件大小（限制为500MB）
+const MAX_FILE_SIZE = 500 * 1024 * 1024 // 500MB（放宽限制以支持大文件）
 const validateFileSize = (file: File): boolean => {
   if (file.size > MAX_FILE_SIZE) {
-    showError('文件过大', `文件 ${file.name} 超过20MB限制（当前: ${(file.size / 1024 / 1024).toFixed(2)}MB）`)
+    showError('文件过大', `文件 ${file.name} 超过500MB限制（当前: ${(file.size / 1024 / 1024).toFixed(2)}MB）`)
     return false
   }
   return true

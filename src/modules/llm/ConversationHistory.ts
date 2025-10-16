@@ -102,13 +102,13 @@ export class ConversationHistory {
 
       // 如果是用户消息且包含音频，并且允许发送历史音频，则添加音频
       if (msg.role === 'user' && msg.type === 'audio' && sendHistoryAudio && msg.audioData) {
-        content.push({
-          type: 'input_audio',
-          input_audio: {
-            data: msg.audioData,
-            format: 'wav'
-          }
-        });
+        const normalized = this.normalizeAudioForLLM(msg.audioData)
+        if (normalized) {
+          content.push({
+            type: 'input_audio',
+            input_audio: normalized
+          });
+        }
       }
 
       const result: Message = {
@@ -135,6 +135,33 @@ export class ConversationHistory {
 
       return result;
     });
+  }
+
+  // 将历史中的音频字符串（可能为 data URL 或纯 base64）转换为 LLM 可用的 {data, format}
+  private normalizeAudioForLLM(source: string): { data: string; format: 'wav' | 'mp3' } | null {
+    const s = (source || '').trim()
+    if (!s) return null
+
+    // data:audio/<subtype>;base64,<payload>
+    const m = s.match(/^data:audio\/([^;]+);base64,(.+)$/i)
+    if (m) {
+      const subtype = m[1].toLowerCase()
+      const payload = m[2]
+      const format: 'wav' | 'mp3' = subtype.includes('wav') ? 'wav' : 'mp3'
+      return { data: payload, format }
+    }
+
+    // data:;base64,<payload>
+    const m2 = s.match(/^data:;base64,(.+)$/i)
+    if (m2) {
+      return { data: m2[1], format: 'wav' }
+    }
+
+    // 纯 base64，默认 wav
+    if (/^[A-Za-z0-9+/=]+$/.test(s)) {
+      return { data: s, format: 'wav' }
+    }
+    return null
   }
 
   clear(): void {
